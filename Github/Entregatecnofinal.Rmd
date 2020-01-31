@@ -1,0 +1,232 @@
+---
+title: "Entrega final tecno"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Datos
+
+La base de datos proviene de Kaggle (https://www.kaggle.com/devinanzelmo/dota-2-matches#players.csv), de un videojuego llamado “Dota 2” , donde se recopila alrededor de 1 millón de datos que explica el comportamiento de cada jugador en relación al juego.
+
+Existen 19 datasets, los cuales explican la habilidad del jugador, la region de la cual provienen, las habilidades de los heroes, los heroes, lista de items, lista de jugadores, pelea campal (team figth), objetivos, partidas, y una serie de datos caracteristicas distintas, en el que nos centraremos solo en alguna de ellas.
+
+# Manipulacion de datos
+
+Manipularemos los datos en base a pequeñas nociones del juego (dota 2)
+
+Primeramente observaremos el archivo players.csv
+
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+library(dplyr)
+players <- read_csv("C:/Users/Usuario/Desktop/Conjunto de datos/players.csv")
+View(players)
+```
+
+El dataset cuenta con muchas variables, en su mayoria irrelevantes o que brinden poca informacion, manipulamos los datos con el objetivo de sacar la informacion mas relevante, a su vez eliminamos los datos faltantes.
+
+```{r}
+datos_ajustadoss <- select(players, (match_id:xp_hero))
+datos_ajustadoss$hero_healing <- NULL
+datos_ajustadoss$tower_damage <- NULL
+datos_ajustadoss$leaver_status <- NULL
+datos_ajustadoss$stuns <- NULL
+datos_ajustadoss$player_slot <- NULL
+datos_ajustadoss$match_id <- NULL
+dataset <-na.omit(datos_ajustadoss)
+dataset <- select(dataset, -(item_0:item_5))
+View(dataset)
+```
+
+Una vez eliminado las variables poco relevantes y los NA omitidos, procedemos agrupar mediante el account de cada jugado (account=0 significa que el jugador esta en el anonimato, es decir no se tiene una ruta especifica de la partida a la cual pertenece)
+
+```{r}
+datos_ajustados <- dataset %>%
+    group_by(account_id) %>%
+    summarize(gold=mean(gold),
+              gold_spent=mean(gold_spent),
+              gold_per_min=mean(gold_per_min),
+              kills=mean(kills),
+              xp_per_min=mean(xp_per_min),
+              deaths=mean(deaths),
+              assists=mean(assists),
+              denies=mean(denies),
+              last_hits=mean(last_hits),
+              hero_damage=mean(hero_damage),
+              level=mean(level),
+              xp_hero=mean(xp_hero))
+
+```
+
+Ahora observamos que nuestra base de datos esta ordenada y agrupada por el ID de cada jugador.
+
+```{r}
+view(datos_ajustados)
+```
+
+Guardamos nuestro documento en un fichero csv.
+
+```{r}
+write.csv(datos_ajustados, file= "data/datos_ajustados.csv")
+```
+
+Cargamos la base de datos guardada anteriormente, y observamos que se creo una variable innecesaria, la eliminamos.
+
+```{r}
+datos_ajustados <- read_csv("C:/Users/Usuario/Desktop/UIB/Tecnologias DT/data/datos_ajustados.csv")
+datos_ajustados$X1 <- NULL
+
+```
+
+## Ahora visualizaremos los datos, para darnos ideas de como un jugador puede llegar a ganar(players).
+
+Para esto nos planteamos supuestos muy geniunos:
+*Si un jugador asesina demasiado y muere poco tiene tendencia a ganar.
+*Si un jugador gana mucho oro significa que farmea demasiado, esto conlleva a ganar mas nivel, y subsecuentemente sacar mas item y ventaja en una partida esto conlleva a llevarse la victoria.
+*Si un jugador tiene muchas asistencias y mucho oro, significa que gano las campales, esto conlleva a tener el win.
+Solo nos basaremos en estos supuestos, sin duda existir muchas combinaciones (basicamente una permuta de 14 variables), no obstante despues veremos modelos que priorizan variables en base a los datos establecidos.
+
+```{r pressure, echo=FALSE}
+ggplot(data = datos_ajustados) + 
+  geom_point(mapping = aes(x = kills, y = deaths), color = "blue")
+```
+
+Esta relacion hipootetica nos plantea que generalmente los jugadores tienden a tener un intervalo de muertes de 5 a 15 y un valor aproximado de 0 a 17 asesinatos, es decir asesinan mas de lo que mueren, para aclarar el grafico se podria plantear la perdida de oro en base una de estos variables.
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+ggplot(data = datos_ajustados) + 
+  geom_point(mapping = aes(x = level, y = gold), 
+             shape = 22, size = 3, color = "red", 
+             fill = 'yellow')
+```
+Si un jugador tiene elevado nivel, quiere decir que gano mucho oro durante la partida, aunque los supuestos planteados son superficiales, eso no es una afirmacion concreta, solo es visual
+
+```{r}
+ggplot(data = datos_ajustados) + 
+  geom_point(mapping = aes(x = assists, y = gold), 
+             alpha = 1)
+```
+Segun el supuesto 3 (planteado anteriormente), afirmamos que estabamos equivocados, el grafico señala que un jugador que tiene entre 1 y 25 asistencias gana aproximadamente 10000 de oro, esto quiere decir que no necesariamente un jugador debe tener asistencias para ganar oro.
+
+```{r}
+attach(datos_ajustados)
+require(ISLR)
+require(tree)
+
+```
+
+Para el analisis utilizamos la media de skills= 7.
+
+```{r}
+hist(kills)
+High=ifelse(kills<=7,"No","Yes")
+datos_ajustados=data.frame(datos_ajustados, High)
+```
+
+```{r}
+tree.datos_ajustados=tree(High~.-kills,data=datos_ajustados)
+summary(tree.datos_ajustados)
+plot(tree.datos_ajustados)
+text(tree.datos_ajustados,pretty=0)
+```
+
+```{r}
+tree.datos_ajustados
+```
+
+```{r}
+train=sample(1:nrow(datos_ajustados),110610)
+tree.datos_ajustados=tree(High~.-kills,datos_ajustados,subset=train)
+plot(tree.datos_ajustados);text(tree.datos_ajustados,pretty=0)
+tree.pred=predict(tree.datos_ajustados,datos_ajustados[-train,],type="class")
+with(datos_ajustados[-train,],table(tree.pred,High))
+```
+
+```{r}
+cv.datos_ajustados=cv.tree(tree.datos_ajustados,FUN=prune.misclass)
+cv.datos_ajustados
+plot(cv.datos_ajustados)
+prune.datos_ajustados=prune.misclass(tree.datos_ajustados,best=11)
+plot(prune.datos_ajustados);text(prune.datos_ajustados,pretty=0)
+```
+
+Procedemos a realizar la prediccion en nuestro conjunto test, es decir no tomamos en cuenta el conjunto de entrenamiento
+```{r}
+tree.pred=predict(prune.datos_ajustados,datos_ajustados[-train,],type="class")
+with(datos_ajustados[-train,],table(tree.pred,High))
+```
+
+```{r}
+require(randomForest)
+require(MASS)
+### Tomamos un conjunto de entrenamiento para posteriormente compararlo con el original.
+attach(datos_ajustados)
+train=sample(1:nrow(datos_ajustados),1000)
+```
+
+```{r}
+rf.boston=randomForest(kills~.,data=datos_ajustados,subset=train)
+rf.boston
+```
+
+```{r}
+### trabajaremos con un oob.err de 4 debido a que 3.39 puede tomar un valor de 4 asi tenemos un mayor porcentaje de error. y nos acercamos mas a la prediccion.
+oob.err=double(4)
+test.err=double(4)
+for(mtry in 1:10){
+  fit=randomForest(kills~.,data=datos_ajustados,subset=train,mtry=mtry,ntree=500)
+  oob.err[mtry]=fit$mse[500]
+  pred=predict(fit,datos_ajustados[-train,])
+  test.err[mtry]=with(datos_ajustados[-train,],mean((kills-pred)^2))
+  cat(mtry," ") 
+}
+matplot(1:mtry,cbind(test.err,oob.err),pch=19,col=c("red","blue"),type="b",ylab="Mean Squared Error")
+legend("topright",legend=c("Test","OOB"),pch=19,col=c("red","blue"))
+```
+
+```{r}
+### install.packages("gbm")
+require(gbm)
+boost.datos_ajustados=gbm(kills~.,data=datos_ajustados[train,],distribution="gaussian",n.trees=10000,shrinkage=0.01,interaction.depth=4)
+summary(boost.datos_ajustados)
+plot(boost.datos_ajustados,i="hero_damage")
+plot(boost.datos_ajustados,i="xp_hero")
+```
+
+```{r}
+n.trees=seq(from=100,to=5000,by=100)
+predmat=predict(boost.datos_ajustados,newdata=datos_ajustados[-train,],n.trees=n.trees)
+dim(predmat)
+berr=with(datos_ajustados[-train,],apply( (predmat-kills)^2,2,mean))
+plot(n.trees,berr,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
+# comparacion random forest
+abline(h=min(test.err),col="red")
+n.trees=seq
+```
+
+```{r}
+## Do 5-fold cross-validation
+boost.datos_ajustados.cv=gbm(kills~.,data=datos_ajustados[train,],distribution="gaussian",n.trees=5000,cv.folds=5,shrinkage=0.01,interaction.depth=4)
+# usamos 5-fold para cross validation
+best.iter <- gbm.perf(boost.datos_ajustados.cv,method="cv")
+print(best.iter)
+# plot the performance y la variable de influencia
+summary(boost.datos_ajustados.cv,n.trees=5000) # basado en arboles
+summary(boost.datos_ajustados.cv,n.trees=best.iter) # basado en la estimacion de numero de arboles
+# prediccion en el nuevo data usando "best" numero de arboles
+n.trees.2=seq(from=100,to=best.iter,by=100)
+predmat.2=predict(boost.datos_ajustados,newdata=datos_ajustados[-train,],n.trees=n.trees.2)
+dim(predmat.2)
+berr.2=with(datos_ajustados[-train,],apply( (predmat.2-kills)^2,2,mean))
+plot(n.trees.2,berr.2,pch=19,ylab="Mean Squared Error", xlab="# Trees",main="Boosting Test Error")
+#comparacion random forest
+abline(h=min(test.err),col="red")
+```
